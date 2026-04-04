@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>中國象棋（AI）</title>
+<style>
+body { font-family: Arial; text-align: center; }
+#board { display: grid; grid-template-columns: repeat(9, 50px); grid-template-rows: repeat(10, 50px); justify-content: center; }
+.cell { width:50px;height:50px;border:1px solid #333;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:20px; }
+.red{color:red;} .black{color:black;} .selected{background:yellow;}
+#menu{margin:20px;}
+</style>
+</head>
+<body>
+
+<div id="menu">
+<h2>中國象棋</h2>
+<button onclick="startGame('easy')">簡單（隨機AI）</button>
+<button onclick="startGame('hard')">困難（Minimax AI）</button>
+</div>
+
+<h2 id="title" style="display:none;">中國象棋（玩家 vs AI）</h2>
+<p id="status"></p>
+<div id="board"></div>
+<button onclick="initGame()">重新開始</button>
+
+<script>
+let difficulty="easy";
+
+function createPiece(type, side){ return { type, side }; }
+
+const initialBoard = [
+  [createPiece("rook","black"),createPiece("knight","black"),createPiece("bishop","black"),createPiece("advisor","black"),createPiece("king","black"),createPiece("advisor","black"),createPiece("bishop","black"),createPiece("knight","black"),createPiece("rook","black")],
+  [null,null,null,null,null,null,null,null,null],
+  [null,createPiece("cannon","black"),null,null,null,null,null,createPiece("cannon","black"),null],
+  [createPiece("pawn","black"),null,createPiece("pawn","black"),null,createPiece("pawn","black"),null,createPiece("pawn","black"),null,createPiece("pawn","black")],
+  [null,null,null,null,null,null,null,null,null],
+  [null,null,null,null,null,null,null,null,null],
+  [createPiece("pawn","red"),null,createPiece("pawn","red"),null,createPiece("pawn","red"),null,createPiece("pawn","red"),null,createPiece("pawn","red")],
+  [null,createPiece("cannon","red"),null,null,null,null,null,createPiece("cannon","red"),null],
+  [null,null,null,null,null,null,null,null,null],
+  [createPiece("rook","red"),createPiece("knight","red"),createPiece("bishop","red"),createPiece("advisor","red"),createPiece("king","red"),createPiece("advisor","red"),createPiece("bishop","red"),createPiece("knight","red"),createPiece("rook","red")]
+];
+
+let board, selected=null, current="red";
+
+function startGame(level){
+  difficulty=level;
+  document.getElementById("menu").style.display="none";
+  document.getElementById("title").style.display="block";
+  initGame();
+}
+
+function initGame(){ board=JSON.parse(JSON.stringify(initialBoard)); selected=null; current="red"; render(); }
+
+function getText(p){
+  const map={ king:{red:"帥",black:"將"}, advisor:{red:"仕",black:"士"}, bishop:{red:"相",black:"象"}, knight:{red:"馬",black:"馬"}, rook:{red:"車",black:"車"}, cannon:{red:"炮",black:"砲"}, pawn:{red:"兵",black:"卒"} };
+  return map[p.type][p.side];
+}
+
+function render(){
+  const b=document.getElementById("board"); b.innerHTML="";
+  board.forEach((row,r)=>row.forEach((cell,c)=>{
+    const d=document.createElement("div"); d.className="cell";
+    if(cell){ d.innerText=getText(cell); d.classList.add(cell.side); }
+    if(selected && selected.r!==undefined && selected.c!==undefined && selected.r===r && selected.c===c) d.classList.add("selected");
+    d.onclick=()=>clickCell(r,c);
+    b.appendChild(d);
+  }));
+  let txt="輪到："+(current==="red"?"玩家":"電腦");
+  if(isCheck(current)) txt+="（將軍）";
+  document.getElementById("status").innerText=txt;
+}
+
+function clickCell(r,c){
+  if(current!=="red") return;
+
+  // 防呆：避免 selected 為 null/undefined
+  if(!selected || selected.r===undefined || selected.c===undefined){
+    let p=board[r][c];
+    if(p && p.side==="red") selected={r,c};
+    render();
+    return;
+  }
+
+  let p=board[r][c];
+
+  if(validMove(selected.r,selected.c,r,c)){
+    let backup=JSON.parse(JSON.stringify(board));
+    board[r][c]=board[selected.r][selected.c];
+    board[selected.r][selected.c]=null;
+
+    if(isCheck("red")){
+      board=backup;
+    }else{
+      selected=null;
+      current="black";
+      render();
+      setTimeout(aiMove,300);
+      return;
+    }
+  }
+
+  selected=null;
+  render();
+}
+
+function aiMove(){
+  let move = difficulty==="easy" ? randomMove() : minimaxRoot(2);
+
+  if(!move){ alert("遊戲結束"); return; }
+
+  board[move.tr][move.tc]=board[move.r][move.c];
+  board[move.r][move.c]=null;
+
+  if(isCheckmate("red")){ render(); alert("將死！電腦勝利"); return; }
+
+  current="red";
+  render();
+}
+
+function randomMove(){
+  let moves=[];
+  for(let r=0;r<10;r++)for(let c=0;c<9;c++){
+    let p=board[r][c];
+    if(p && p.side==="black"){
+      for(let tr=0;tr<10;tr++)for(let tc=0;tc<9;tc++){
+        if(validMove(r,c,tr,tc)) moves.push({r,c,tr,tc});
+      }
+    }
+  }
+  return moves[Math.floor(Math.random()*moves.length)];
+}
+
+function minimaxRoot(depth){
+  let bestScore=-9999, bestMove=null;
+  let moves=randomMoveList();
+  for(let m of moves){
+    let backup=JSON.parse(JSON.stringify(board));
+    board[m.tr][m.tc]=board[m.r][m.c]; board[m.r][m.c]=null;
+    let score=minimax(depth-1,false);
+    board=backup;
+    if(score>bestScore){ bestScore=score; bestMove=m; }
+  }
+  return bestMove;
+}
+
+function minimax(depth,isMax){
+  if(depth===0) return evaluate();
+  let moves=randomMoveList();
+  let best=isMax?-9999:9999;
+  for(let m of moves){
+    let backup=JSON.parse(JSON.stringify(board));
+    board[m.tr][m.tc]=board[m.r][m.c]; board[m.r][m.c]=null;
+    let score=minimax(depth-1,!isMax);
+    board=backup;
+    best=isMax?Math.max(best,score):Math.min(best,score);
+  }
+  return best;
+}
+
+function randomMoveList(){
+  let moves=[];
+  for(let r=0;r<10;r++)for(let c=0;c<9;c++){
+    let p=board[r][c];
+    if(p && p.side==="black"){
+      for(let tr=0;tr<10;tr++)for(let tc=0;tc<9;tc++){
+        if(validMove(r,c,tr,tc)) moves.push({r,c,tr,tc});
+      }
+    }
+  }
+  return moves;
+}
+
+function evaluate(){
+  const val={king:1000,rook:50,knight:30,bishop:20,advisor:20,cannon:40,pawn:10};
+  let score=0;
+  for(let r=0;r<10;r++)for(let c=0;c<9;c++){
+    let p=board[r][c];
+    if(p) score+= (p.side==="black"?1:-1)*val[p.type];
+  }
+  return score;
+}
+
+function validMove(sr,sc,tr,tc){
+  let p=board[sr][sc], t=board[tr][tc];
+  if(!p) return false;
+  if(t && t.side===p.side) return false;
+  let dr=tr-sr, dc=tc-sc;
+
+  switch(p.type){
+    case "rook": return (dr===0||dc===0)&&clearPath(sr,sc,tr,tc);
+    case "knight": return (Math.abs(dr)===2&&Math.abs(dc)===1&&!board[sr+dr/2][sc])||(Math.abs(dr)===1&&Math.abs(dc)===2&&!board[sr][sc+dc/2]);
+    case "bishop": return Math.abs(dr)===2&&Math.abs(dc)===2&&!board[sr+dr/2][sc+dc/2]&&(p.side==="red"?tr>=5:tr<=4);
+    case "advisor": return Math.abs(dr)===1&&Math.abs(dc)===1&&inPalace(tr,tc,p.side);
+    case "king": return (Math.abs(dr)+Math.abs(dc)===1)&&inPalace(tr,tc,p.side);
+    case "cannon": return (dr===0||dc===0)&&cannon(sr,sc,tr,tc,t);
+    case "pawn": return soldier(sr,sc,tr,tc,p.side);
+  }
+  return false;
+}
+
+function clearPath(sr,sc,tr,tc){
+  if(sr===tr){ let s=tc>sc?1:-1; for(let c=sc+s;c!==tc;c+=s) if(board[sr][c]) return false; }
+  else{ let s=tr>sr?1:-1; for(let r=sr+s;r!==tr;r+=s) if(board[r][sc]) return false; }
+  return true;
+}
+
+function cannon(sr,sc,tr,tc,t){
+  let count=0;
+  if(sr===tr){ let s=tc>sc?1:-1; for(let c=sc+s;c!==tc;c+=s) if(board[sr][c]) count++; }
+  else{ let s=tr>sr?1:-1; for(let r=sr+s;r!==tr;r+=s) if(board[r][sc]) count++; }
+  return t?count===1:count===0;
+}
+
+function inPalace(r,c,s){ return s==="red"?(r>=7&&c>=3&&c<=5):(r<=2&&c>=3&&c<=5); }
+
+function soldier(sr,sc,tr,tc,s){
+  let dr=tr-sr, dc=Math.abs(tc-sc);
+  if(s==="red"){ if(sr<=4) return (dr===-1&&dc===0)||(dr===0&&dc===1); return dr===-1&&dc===0; }
+  else{ if(sr>=5) return (dr===1&&dc===0)||(dr===0&&dc===1); return dr===1&&dc===0; }
+}
+
+function findKing(side){
+  for(let r=0;r<10;r++)for(let c=0;c<9;c++){
+    let p=board[r][c];
+    if(p && p.type==="king" && p.side===side) return {r,c};
+  }
+  return null;
+}
+
+function isCheck(side){
+  let k=findKing(side);
+  if(!k) return false;
+  for(let r=0;r<10;r++)for(let c=0;c<9;c++){
+    let p=board[r][c];
+    if(!p||p.side===side) continue;
+    if(validMove(r,c,k.r,k.c)) return true;
+  }
+  return false;
+}
+
+function hasAnyMove(side){
+  for(let r=0;r<10;r++)for(let c=0;c<9;c++){
+    let p=board[r][c];
+    if(!p||p.side!==side) continue;
+    for(let tr=0;tr<10;tr++)for(let tc=0;tc<9;tc++){
+      if(validMove(r,c,tr,tc)){
+        let b=JSON.parse(JSON.stringify(board));
+        board[tr][tc]=p; board[r][c]=null;
+        if(!isCheck(side)){ board=b; return true; }
+        board=b;
+      }
+    }
+  }
+  return false;
+}
+
+function isCheckmate(side){ return isCheck(side)&&!hasAnyMove(side); }
+
+</script>
+</body>
+</html>
