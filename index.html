@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>預見氣象TW - 開發版</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --bg-dark: #0f172a; 
+            --panel-bg: rgba(30, 41, 59, 0.85); 
+            --accent-cyan: #06b6d4;
+            --accent-blue: #3b82f6;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+        }
+
+        body {
+            background-color: var(--bg-dark);
+            background-image: 
+                radial-gradient(at 0% 0%, rgba(14, 165, 233, 0.1) 0px, transparent 50%),
+                radial-gradient(at 100% 100%, rgba(139, 92, 246, 0.1) 0px, transparent 50%);
+            background-attachment: fixed;
+            font-family: "PingFang TC", "Heiti TC", "Microsoft JhengHei", sans-serif;
+            color: var(--text-main);
+            min-height: 100vh;
+            line-height: 1.8;
+        }
+
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+        .tech-panel {
+            background: var(--panel-bg);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 1.5rem;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
+        }
+
+        .region-btn {
+            white-space: nowrap;
+            padding: 0.8rem 2rem;
+            border-radius: 0.75rem;
+            font-weight: 800;
+            font-size: 1.2rem;
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--text-muted);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .region-btn.active {
+            background: var(--accent-cyan);
+            color: white;
+            box-shadow: 0 0 15px rgba(6, 182, 212, 0.4);
+        }
+
+        .city-btn {
+            white-space: nowrap;
+            padding: 0.6rem 1.8rem;
+            border-radius: 99px;
+            font-weight: 700;
+            font-size: 1.1rem;
+            background: rgba(0, 0, 0, 0.4);
+            color: var(--text-muted);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: all 0.2s;
+        }
+        .city-btn.active {
+            background: white;
+            color: var(--bg-dark);
+            border-color: white;
+        }
+
+        .indicator-card {
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 1.5rem;
+            padding: 2rem;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            align-items: center;
+            text-align: center;
+            min-height: 220px;
+            transition: transform 0.2s ease;
+        }
+        .indicator-card:hover { transform: translateY(-4px); }
+
+        .toast {
+            position: fixed; top: 32px; left: 50%; transform: translateX(-50%);
+            background: white; color: black; padding: 16px 32px; border-radius: 99px;
+            z-index: 1000; display: none; font-weight: 900; font-size: 1.2rem;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+
+        .hidden-panel {
+            display: none !important;
+        }
+    </style>
+</head>
+<body class="p-4 md:p-8 flex flex-col items-center">
+
+    <div id="toast" class="toast"><i class="fas fa-info-circle mr-2"></i><span id="toast-msg">更新中</span></div>
+
+    <div class="max-w-7xl w-full">
+        
+        <header class="flex flex-col md:flex-row justify-between items-center mb-10 gap-6">
+            <div class="text-center md:text-left flex flex-col md:flex-row items-center gap-6">
+                <h1 class="text-4xl md:text-5xl font-black text-white tracking-widest flex items-center gap-4 cursor-pointer" onclick="location.reload()">
+                    <i class="fas fa-satellite-dish text-cyan-400"></i> 預見氣象TW
+                </h1>
+                <div class="hidden md:block h-8 w-px bg-slate-600"></div>
+                <div>
+                    <p id="current-date" class="text-2xl font-bold text-slate-200 font-mono tracking-wider"></p>
+                    <p id="update-ts" class="text-base text-cyan-400 font-black mt-1">更新：--</p>
+                </div>
+            </div>
+            <button id="refresh-btn" class="w-full md:w-auto flex items-center justify-center gap-3 bg-white text-black px-10 py-4 rounded-full hover:bg-cyan-400 transition-all font-black text-xl shadow-2xl active:scale-95 hidden-panel">
+                <i class="fas fa-sync-alt" id="refresh-icon"></i> 更新預報
+            </button>
+        </header>
+
+        <!-- 篩選卡片區塊 -->
+        <div id="selector-panel" class="tech-panel p-10 mb-10 text-center flex flex-col items-center justify-center min-h-[300px]">
+            <h2 class="text-2xl text-white font-bold mb-6 tracking-widest"><i class="fas fa-map-marker-alt text-cyan-400 mr-2"></i>請選擇您要查詢的區域</h2>
+            <div class="flex flex-wrap justify-center gap-4 mb-8 border-b border-white/10 pb-8 w-full max-w-3xl" id="region-selector"></div>
+            <div class="flex flex-wrap justify-center gap-4 w-full max-w-4xl" id="city-selector"></div>
+        </div>
+
+        <!-- 氣象預報區塊 (初始隱藏) -->
+        <div id="dashboard-panel" class="hidden-panel">
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-10 mb-10 items-stretch">
+                <div class="tech-panel p-10 flex flex-col items-center justify-center relative overflow-hidden h-full min-h-[400px]">
+                    <div class="absolute inset-0 bg-gradient-to-br from-cyan-500/10 to-transparent pointer-events-none"></div>
+                    <div class="text-center mb-8 relative z-10">
+                        <h2 id="reg-name" class="text-5xl font-black text-white tracking-widest mb-3">--</h2>
+                        <p id="reg-desc" class="text-3xl font-bold text-cyan-400">--</p>
+                    </div>
+                    <div class="flex items-center gap-12 relative z-10 mb-6">
+                        <span id="reg-temp" class="text-[8rem] md:text-[9rem] font-black text-white tracking-tighter leading-none drop-shadow-lg">--°</span>
+                        <i id="main-weather-icon" class="fas fa-sun text-[7rem] text-yellow-400 drop-shadow-2xl"></i>
+                    </div>
+                    <div class="bg-slate-800/90 px-8 py-3 rounded-full border border-white/10 text-2xl font-bold text-slate-300 relative z-10 shadow-inner">
+                        體感溫度 <span id="reg-feels" class="text-white ml-2">--</span>°C
+                    </div>
+                </div>
+
+                <div class="flex flex-col gap-6 h-full justify-between">
+                    <div class="tech-panel p-10 border-l-8 border-cyan-500 flex-1 flex flex-col justify-center">
+                        <h3 class="text-3xl font-black text-cyan-400 mb-6 flex items-center gap-3">
+                            <i class="fas fa-quote-left opacity-80"></i> 當日天氣重點
+                        </h3>
+                        <p id="narrative-today" class="text-slate-100 text-xl leading-loose font-medium tracking-wide">載入中...</p>
+                    </div>
+                    <div class="tech-panel p-10 border-l-8 border-blue-500 flex-1 flex flex-col justify-center">
+                        <h3 class="text-3xl font-black text-blue-400 mb-6 flex items-center gap-3">
+                            <i class="fas fa-calendar-alt opacity-80"></i> 未來趨勢提醒
+                        </h3>
+                        <p id="narrative-future" class="text-slate-100 text-xl leading-loose font-medium tracking-wide">載入中...</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 mb-10">
+                <div class="indicator-card border-b-4 border-b-blue-500">
+                    <div class="flex items-center gap-3 text-blue-400 font-black text-2xl mb-4">
+                        <i class="fas fa-umbrella"></i> 降雨機率
+                    </div>
+                    <div id="reg-rain" class="text-6xl font-black text-white my-2">--%</div>
+                    <p id="desc-rain" class="text-lg text-slate-300 font-medium leading-relaxed mt-4">載入中...</p>
+                </div>
+                <div class="indicator-card border-b-4 border-b-cyan-500">
+                    <div class="flex items-center gap-3 text-cyan-400 font-black text-2xl mb-4">
+                        <i class="fas fa-tint"></i> 相對濕度
+                    </div>
+                    <div id="reg-hum" class="text-6xl font-black text-white my-2">--%</div>
+                    <p id="desc-hum" class="text-lg text-slate-300 font-medium leading-relaxed mt-4">載入中...</p>
+                </div>
+                <div class="indicator-card border-b-4 border-b-emerald-500">
+                    <div class="flex items-center gap-3 text-emerald-400 font-black text-2xl mb-4">
+                        <i class="fas fa-leaf"></i> 空氣品質
+                    </div>
+                    <div id="reg-aqi" class="text-6xl font-black text-white my-2">--</div>
+                    <p id="desc-aqi" class="text-lg text-slate-300 font-medium leading-relaxed mt-4">載入中...</p>
+                </div>
+                <div class="indicator-card border-b-4 border-b-orange-500">
+                    <div class="flex items-center gap-3 text-orange-400 font-black text-2xl mb-4">
+                        <i class="fas fa-sun"></i> 紫外線
+                    </div>
+                    <div id="reg-uv" class="text-6xl font-black text-white my-2">--</div>
+                    <p id="desc-uv" class="text-lg text-slate-300 font-medium leading-relaxed mt-4">載入中...</p>
+                </div>
+            </div>
+        </div>
+
+        <footer class="mt-16 py-10 border-t border-slate-700 text-center">
+            <p class="text-slate-400 text-xl font-bold tracking-widest">
+                資料來源：AI 即時聚合分析
+            </p>
+        </footer>
+    </div>
+
+    <script>
+        const apiKey = ""; 
+        const COOLDOWN_TIME = 3 * 60 * 60 * 1000; // 3小時的強制冷卻時間
+        const CACHE_KEY = 'tw_weather_v9_dev'; 
+
+        const REGION_MAP = {
+            '北部': ['基隆市', '臺北市', '新北市', '桃園市', '新竹市', '新竹縣', '宜蘭縣'],
+            '中部': ['苗栗縣', '臺中市', '彰化縣', '南投縣', '雲林縣'],
+            '南部': ['嘉義市', '嘉義縣', '臺南市', '高雄市', '屏東縣'],
+            '東部': ['花蓮縣', '臺東縣']
+        };
+
+        const app = {
+            data: {}, activeRegion: null, activeCity: null,
+
+            safeSetText(id, text) {
+                const el = document.getElementById(id);
+                if (el) el.innerHTML = (text !== undefined && text !== null && text !== '') ? text : '--';
+            },
+
+            async fetchWithRetry(url, options, maxRetries = 2) {
+                let delay = 1000;
+                for (let i = 0; i < maxRetries; i++) {
+                    try {
+                        const response = await fetch(url, options);
+                        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                        return response;
+                    } catch (err) {
+                        if (i === maxRetries - 1) throw err;
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                        delay *= 2;
+                    }
+                }
+            },
+
+            init() {
+                this.loadCache();
+                this.startClock();
+                this.bindEvents();
+                this.showSelector(); // 載入或重新整理時，強制顯示篩選卡片
+            },
+
+            loadCache() {
+                try {
+                    const saved = localStorage.getItem(CACHE_KEY);
+                    if (saved) this.data = JSON.parse(saved);
+                } catch(e) { console.warn("Cache load error"); }
+            },
+
+            saveCache() {
+                localStorage.setItem(CACHE_KEY, JSON.stringify(this.data));
+            },
+
+            startClock() {
+                const update = () => {
+                    const el = document.getElementById('current-date');
+                    if (el) el.innerText = new Date().toLocaleString('zh-TW', { dateStyle: 'full', timeStyle: 'short', hour12: false });
+                };
+                update(); setInterval(update, 60000);
+            },
+
+            // 顯示篩選卡片 (隱藏面板)
+            showSelector() {
+                document.getElementById('selector-panel').classList.remove('hidden-panel');
+                document.getElementById('dashboard-panel').classList.add('hidden-panel');
+                document.getElementById('refresh-btn').classList.add('hidden-panel');
+                this.activeRegion = null;
+                this.activeCity = null;
+                this.renderRegions();
+                this.renderCities();
+            },
+
+            // 顯示預報面板 (隱藏篩選器)
+            activateDashboard() {
+                document.getElementById('selector-panel').classList.add('hidden-panel');
+                document.getElementById('dashboard-panel').classList.remove('hidden-panel');
+                document.getElementById('refresh-btn').classList.remove('hidden-panel');
+                this.checkAndFetchForCity(false);
+            },
+
+            renderRegions() {
+                const container = document.getElementById('region-selector');
+                container.innerHTML = Object.keys(REGION_MAP).map(r => 
+                    `<button class="region-btn ${r === this.activeRegion ? 'active' : ''}" data-region="${r}">${r}</button>`
+                ).join('');
+            },
+
+            renderCities() {
+                const container = document.getElementById('city-selector');
+                if (!this.activeRegion) {
+                    container.innerHTML = ''; // 尚未選擇區域時不顯示城市
+                    return;
+                }
+                container.innerHTML = REGION_MAP[this.activeRegion].map(c => 
+                    `<button class="city-btn" data-city="${c}">${c}</button>`
+                ).join('');
+            },
+
+            bindEvents() {
+                document.getElementById('refresh-btn').onclick = () => {
+                    this.checkAndFetchForCity(true);
+                };
+                document.getElementById('region-selector').onclick = (e) => {
+                    const r = e.target.getAttribute('data-region');
+                    if (r) {
+                        this.activeRegion = r;
+                        this.renderRegions(); 
+                        this.renderCities();
+                    }
+                };
+                document.getElementById('city-selector').onclick = (e) => {
+                    const c = e.target.getAttribute('data-city');
+                    if (c) {
+                        this.activeCity = c;
+                        this.activateDashboard(); // 選定後啟動面板
+                    }
+                };
+            },
+
+            // 獲取資料與 3 小時嚴格冷卻
+            async checkAndFetchForCity(isManualUpdate = false) {
+                const city = this.activeCity;
+                if (!city) return;
+
+                const cached = this.data[city] || {};
+                const now = Date.now();
+                const lastFetchTs = cached.fetch_ts || 0;
+
+                // 若為手動按鈕更新，且距離上次抓取小於 3 小時，則觸發防護阻擋
+                if (isManualUpdate && (now - lastFetchTs < COOLDOWN_TIME)) {
+                    this.showToast('稍早已有更新，請稍後再試。');
+                    return; // 強制中斷，不發送 API
+                }
+
+                // 若非手動更新(如初次載入/切換城市)，且資料在 3 小時內，則直接使用快取渲染
+                if (!isManualUpdate && (now - lastFetchTs < COOLDOWN_TIME)) {
+                    this.render();
+                    return; 
+                }
+
+                const icon = document.getElementById('refresh-icon');
+                if(icon) icon.classList.add('fa-spin');
+                this.showToast("正在透過 AI 聚合最新氣象資料...");
+
+                try {
+                    let prompt = `請使用 google_search 搜尋台灣「${city}」氣象資訊，並嚴格只回傳 JSON 格式。數值必須是純數字。
+                    \n獲取即時：溫度(t), 濕度(h), AQI(a), 紫外線(u), 降雨機率(r), 天氣描述簡稱(desc)。
+                    \n提供繁體中文分析：當日重點(article), 未來趨勢(future)，皆需白話易懂，約40字。`;
+                    
+                    let props = { 
+                        t:{type:"NUMBER"}, h:{type:"NUMBER"}, a:{type:"NUMBER"}, u:{type:"NUMBER"}, r:{type:"NUMBER"}, desc:{type:"STRING"},
+                        article:{type:"STRING"}, future:{type:"STRING"} 
+                    };
+
+                    const response = await this.fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            contents: [{ parts: [{ text: prompt }] }],
+                            tools: [{ google_search: {} }],
+                            generationConfig: { 
+                                responseMimeType: "application/json", 
+                                responseSchema: { type:"OBJECT", properties: props, required: ["t", "h", "a", "u", "r", "desc", "article", "future"] } 
+                            }
+                        })
+                    });
+                    
+                    if (!response.ok) throw new Error("API Request Failed");
+                    
+                    const res = await response.json();
+                    const rawText = res.candidates[0].content.parts[0].text;
+                    const newData = JSON.parse(rawText.replace(/```json/gi, '').replace(/```/g, '').trim());
+
+                    // 記錄本次成功獲取的時間戳記
+                    this.data[city] = { ...cached, ...newData, fetch_ts: Date.now() };
+                    
+                    this.saveCache();
+                    if (this.activeCity === city) this.render();
+                    this.showToast("預報資料已全面更新");
+                } catch (e) {
+                    console.error("Fetch Error:", e);
+                    if (!this.data[city] || !this.data[city].t) this.data[city] = this.getFallbackData(city);
+                    if (this.activeCity === city) this.render();
+                    this.showToast("網路異常，目前顯示離線快取資料");
+                } finally {
+                    if (icon) icon.classList.remove('fa-spin');
+                }
+            },
+
+            getWhiteLanguage(type, val) {
+                // 如果正處於降級狀態（Fallback），統一回傳網路警示
+                if (this.isFallbackActive()) return "無法更新，請待網路恢復後重試。";
+
+                if (val === undefined || val === null) return "--";
+                if (type === 'rain') {
+                    if (val < 20) return "天氣很穩定，不太會下雨，適合出外走走。";
+                    if (val < 50) return "雲量變多，可能會飄些小雨，請記得帶傘。";
+                    if (val < 80) return "水氣偏多，容易下雨，出門請務必攜帶雨具。";
+                    return "預期有明顯降雨，路面濕滑，請小心外出。";
+                }
+                if (type === 'hum') {
+                    if (val < 50) return "空氣偏乾燥，請記得多補充水分。";
+                    if (val < 75) return "濕度剛剛好，身體感覺蠻舒服的。";
+                    return "水氣較重，體感會覺得濕濕悶悶的。";
+                }
+                if (type === 'aqi') {
+                    if (val <= 50) return "空氣非常清新，可以多開窗通風。";
+                    if (val <= 100) return "空氣品質普通，過敏族群請留意。";
+                    return "空氣稍差，建議留在室內並減少劇烈活動。";
+                }
+                if (type === 'uv') {
+                    if (val <= 2) return "陽光微弱，不需特別防護。";
+                    if (val <= 5) return "陽光溫和，曬久了建議戴個帽子。";
+                    if (val <= 7) return "陽光刺眼，出門請做好防曬。";
+                    return "紫外線極強！請盡量避免中午外出。";
+                }
+                return "--";
+            },
+
+            // 判斷當前顯示的資料是否為降級模擬資料
+            isFallbackActive() {
+                const d = this.data[this.activeCity];
+                return d && d.is_fallback === true;
+            },
+
+            render() {
+                const d = this.data[this.activeCity];
+                if (!d || !d.t) return;
+
+                this.safeSetText('reg-name', this.activeCity);
+                this.safeSetText('reg-desc', d.desc || "--");
+                this.safeSetText('reg-temp', `${Math.round(d.t)}°`);
+                this.safeSetText('reg-feels', Math.round(d.t + ((d.h||0) > 75 ? 2 : -1)));
+                
+                this.safeSetText('reg-rain', `${d.r !== undefined ? d.r : '--'}%`);
+                this.safeSetText('desc-rain', this.getWhiteLanguage('rain', d.r));
+                
+                this.safeSetText('reg-hum', `${d.h !== undefined ? d.h : '--'}%`);
+                this.safeSetText('desc-hum', this.getWhiteLanguage('hum', d.h));
+                
+                this.safeSetText('reg-aqi', d.a || '--');
+                this.safeSetText('desc-aqi', this.getWhiteLanguage('aqi', d.a));
+                
+                this.safeSetText('reg-uv', d.u || '--');
+                this.safeSetText('desc-uv', this.getWhiteLanguage('uv', d.u));
+
+                this.safeSetText('narrative-today', d.article || "分析中...");
+                this.safeSetText('narrative-future', d.future || "計算中...");
+
+                const iconMap = { '雨':'fa-cloud-showers-heavy', '晴':'fa-sun', '雲':'fa-cloud-sun' };
+                let icon = 'fa-cloud';
+                for (let key in iconMap) if ((d.desc||"").includes(key)) icon = iconMap[key];
+                const mainIcon = document.getElementById('main-weather-icon');
+                if (mainIcon) mainIcon.className = `fas ${icon} text-[7rem] drop-shadow-2xl ${icon==='fa-sun'?'text-yellow-400':(icon==='fa-cloud-showers-heavy'?'text-blue-400':'text-cyan-200')}`;
+
+                const ts = d.fetch_ts || Date.now();
+                this.safeSetText('update-ts', `更新：${new Date(ts).toLocaleTimeString('zh-TW', {hour:'2-digit', minute:'2-digit'})}`);
+            },
+
+            showToast(msg) {
+                const t = document.getElementById('toast');
+                const m = document.getElementById('toast-msg');
+                if (m) m.innerText = msg;
+                t.style.display = 'block'; setTimeout(() => t.style.display = 'none', 3000);
+            },
+
+            getFallbackData(city) {
+                const errMsg = "無法更新，請待網路恢復後重試。";
+                return {
+                    t: 26, h: 65, a: 45, u: 5, r: 15, desc: "離線",
+                    fetch_ts: Date.now(),
+                    is_fallback: true, // 標記為降級資料
+                    article: errMsg,
+                    future: errMsg
+                };
+            }
+        };
+
+        window.onload = () => app.init();
+    </script>
+</body>
+</html>
